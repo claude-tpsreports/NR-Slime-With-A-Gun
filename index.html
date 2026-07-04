@@ -81,6 +81,29 @@
         text-align: center;
         touch-action: none;
       }
+      .action-btn {
+        position: fixed;
+        right: calc(14px + env(safe-area-inset-right, 0px));
+        width: 58px; height: 58px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.14);
+        border: 2px solid rgba(255,255,255,0.35);
+        color: #fff;
+        z-index: 20;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: -apple-system, Helvetica, Arial, sans-serif;
+        touch-action: none;
+        -webkit-user-select: none; user-select: none;
+      }
+      .action-btn .k { font-size: 20px; font-weight: 700; line-height: 1; }
+      .action-btn .l { font-size: 9px; opacity: 0.75; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .action-btn.pressed { background: rgba(255,255,255,0.45); }
+      #btn-interact  { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+      #btn-reload    { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+      #btn-inventory { bottom: calc(168px + env(safe-area-inset-bottom, 0px)); }
       #toast {
         position: fixed;
         left: 50%; bottom: 24px;
@@ -134,6 +157,9 @@
     <div id="joystick-hint" style="display:none">move</div>
     <div id="fs-button" style="display:none">&#x26F6;</div>
     <div id="toast"></div>
+    <div class="action-btn" id="btn-interact"><span class="k">E</span><span class="l">use</span></div>
+    <div class="action-btn" id="btn-reload"><span class="k">R</span><span class="l">reload</span></div>
+    <div class="action-btn" id="btn-inventory"><span class="k">&#x25A4;</span><span class="l">items</span></div>
     <div id="rotate-overlay"><div>&#x1F4F1;&#x21BB;<br><br>Please rotate your phone sideways (landscape) to play</div></div>
 
     <script>
@@ -298,7 +324,10 @@
           W: {code:'KeyW', key:'w', keyCode:87},
           A: {code:'KeyA', key:'a', keyCode:65},
           S: {code:'KeyS', key:'s', keyCode:83},
-          D: {code:'KeyD', key:'d', keyCode:68}
+          D: {code:'KeyD', key:'d', keyCode:68},
+          E: {code:'KeyE', key:'e', keyCode:69},
+          R: {code:'KeyR', key:'r', keyCode:82},
+          TAB: {code:'Tab', key:'Tab', keyCode:9}
         };
         var pressed = {W:false, A:false, S:false, D:false};
 
@@ -379,6 +408,38 @@
         }
         zone.addEventListener('touchend', endJoy, {passive: false});
         zone.addEventListener('touchcancel', endJoy, {passive: false});
+
+        // --- action buttons (E / R / Tab as touch buttons) ---
+        // keydown on press, keyup on release, so holding E works like
+        // holding the key on a keyboard.
+        function bindActionButton(id, keyName) {
+          var b = document.getElementById(id);
+          b.style.display = 'flex';
+          function down(ev) {
+            ev.preventDefault(); ev.stopPropagation();
+            b.classList.add('pressed');
+            sendKey('keydown', keyName);
+          }
+          function up(ev) {
+            ev.preventDefault(); ev.stopPropagation();
+            b.classList.remove('pressed');
+            sendKey('keyup', keyName);
+          }
+          b.addEventListener('touchstart', down, {passive: false});
+          b.addEventListener('touchend', up, {passive: false});
+          b.addEventListener('touchcancel', up, {passive: false});
+          // mouse fallback for hybrid/touchscreen-laptop devices
+          b.addEventListener('mousedown', down);
+          b.addEventListener('mouseup', up);
+        }
+        bindActionButton('btn-interact', 'E');
+        bindActionButton('btn-reload', 'R');
+        bindActionButton('btn-inventory', 'TAB');
+
+        // One-time hint: firing is built into aiming
+        setTimeout(function() {
+          showToast('Aim &amp; fire: touch or drag the right side of the screen. Hold to keep firing.', 6000);
+        }, /iPhone|iPod/i.test(navigator.userAgent) ? 7500 : 1500);
 
         // Safety: if the page loses focus mid-game, release keys
         window.addEventListener('blur', releaseAll);
