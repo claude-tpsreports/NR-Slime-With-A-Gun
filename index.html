@@ -522,11 +522,25 @@
         var invBtn = document.getElementById('btn-inventory');
         invBtn.style.display = 'flex';
 
+        // Everything except the items (exit) button must get out of the way
+        // in inventory mode — any control floating above the capture layer
+        // steals touches from the game's UI underneath it.
+        var hideWhileUi = ['slot-row', 'btn-interact', 'btn-reload', 'btn-menu', 'fs-button', 'joystick-hint'];
         function setUiMode(on) {
           uiMode = on;
           uiOverlay.style.display = on ? 'block' : 'none';
           zone.style.display = on ? 'none' : 'block';
           invBtn.classList.toggle('latched', on);
+          hideWhileUi.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            if (on) {
+              el.dataset.prevDisplay = el.style.display;
+              el.style.display = 'none';
+            } else {
+              el.style.display = el.dataset.prevDisplay || '';
+            }
+          });
           if (on) {
             // cancel any in-progress joystick input
             joyId = null;
@@ -622,7 +636,7 @@
       // Controls initialize immediately — NOT gated on the game finishing
       // loading — so buttons are usable/visible even while Unity boots
       // (and even if the load promise never resolves).
-      var VERSION = 'v6';
+      var VERSION = 'v7';
       document.getElementById('ver').textContent = VERSION;
       initFullscreenButton();
       if (mobileMode) initTouchControls();
