@@ -101,6 +101,17 @@
       .action-btn .k { font-size: 20px; font-weight: 700; line-height: 1; }
       .action-btn .l { font-size: 9px; opacity: 0.75; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
       .action-btn.pressed { background: rgba(255,255,255,0.45); }
+      .action-btn.latched {
+        background: rgba(110,190,255,0.4);
+        border-color: rgba(160,215,255,0.9);
+      }
+      #ui-overlay {
+        position: fixed; inset: 0;
+        z-index: 18; /* above joystick zone (15), below action buttons (20) */
+        display: none;
+        touch-action: none;
+        background: transparent;
+      }
       #btn-interact  { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
       #btn-reload    { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
       #btn-inventory { bottom: calc(168px + env(safe-area-inset-bottom, 0px)); }
@@ -176,6 +187,7 @@
     <div class="action-btn" id="btn-reload"><span class="k">R</span><span class="l">reload</span></div>
     <div class="action-btn" id="btn-inventory"><span class="k">&#x25A4;</span><span class="l">items</span></div>
     <div class="action-btn" id="btn-menu"><span class="k">P</span><span class="l">menu</span></div>
+    <div id="ui-overlay"></div>
     <div id="ver"></div>
     <div id="rotate-overlay"><div>&#x1F4F1;&#x21BB;<br><br>Please rotate your phone sideways (landscape) to play</div></div>
 
@@ -453,8 +465,84 @@
         }
         bindActionButton('btn-interact', 'E');
         bindActionButton('btn-reload', 'R');
-        bindActionButton('btn-inventory', 'TAB');
         bindActionButton('btn-menu', 'P');
+
+        // --- inventory mode ---
+        // The joystick zone covers the bottom-left of the screen — the same
+        // place the game draws its hotbar — and Unity's touch-to-mouse
+        // simulation is unreliable for UI dragging. So the items button
+        // toggles "inventory mode": the joystick turns off and a full-screen
+        // layer converts every touch into REAL mouse events on the canvas
+        // (down / drag / up), making inventory drag-and-drop behave exactly
+        // like it does with a desktop mouse.
+        var uiMode = false;
+        var uiOverlay = document.getElementById('ui-overlay');
+        var invBtn = document.getElementById('btn-inventory');
+        invBtn.style.display = 'flex';
+
+        function setUiMode(on) {
+          uiMode = on;
+          uiOverlay.style.display = on ? 'block' : 'none';
+          zone.style.display = on ? 'none' : 'block';
+          invBtn.classList.toggle('latched', on);
+          if (on) {
+            // cancel any in-progress joystick input
+            joyId = null;
+            base.style.display = 'none';
+            knob.style.transform = 'translate(-50%, -50%)';
+            releaseAll();
+            showToast('Inventory mode — tap and drag items with your finger. Tap &#x25A4; again to play', 3500);
+          }
+        }
+
+        function invToggle(ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          sendKey('keydown', 'TAB');
+          sendKey('keyup', 'TAB');
+          setUiMode(!uiMode);
+        }
+        invBtn.addEventListener('touchend', invToggle, {passive: false});
+        invBtn.addEventListener('mouseup', invToggle);
+
+        // touch → real mouse events, dispatched on the Unity canvas
+        function emitMouse(type, x, y, btns) {
+          canvas.dispatchEvent(new MouseEvent(type, {
+            bubbles: true, cancelable: true, view: window,
+            clientX: x, clientY: y, screenX: x, screenY: y,
+            button: 0, buttons: btns
+          }));
+        }
+        uiOverlay.addEventListener('touchstart', function(ev) {
+          ev.preventDefault();
+          var t = ev.changedTouches[0];
+          emitMouse('mousemove', t.clientX, t.clientY, 0);
+          emitMouse('mousedown', t.clientX, t.clientY, 1);
+        }, {passive: false});
+        uiOverlay.addEventListener('touchmove', function(ev) {
+          ev.preventDefault();
+          var t = ev.changedTouches[0];
+          emitMouse('mousemove', t.clientX, t.clientY, 1);
+        }, {passive: false});
+        function uiTouchEnd(ev) {
+          ev.preventDefault();
+          var t = ev.changedTouches[0];
+          emitMouse('mouseup', t.clientX, t.clientY, 0);
+        }
+        uiOverlay.addEventListener('touchend', uiTouchEnd, {passive: false});
+        uiOverlay.addEventListener('touchcancel', uiTouchEnd, {passive: false});
+        // mouse passthrough for hybrid/touchscreen-laptop devices
+        uiOverlay.addEventListener('mousedown', function(ev) {
+          ev.preventDefault();
+          emitMouse('mousemove', ev.clientX, ev.clientY, 0);
+          emitMouse('mousedown', ev.clientX, ev.clientY, 1);
+        });
+        uiOverlay.addEventListener('mousemove', function(ev) {
+          emitMouse('mousemove', ev.clientX, ev.clientY, ev.buttons);
+        });
+        uiOverlay.addEventListener('mouseup', function(ev) {
+          ev.preventDefault();
+          emitMouse('mouseup', ev.clientX, ev.clientY, 0);
+        });
 
         // One-time hint: firing is built into aiming
         setTimeout(function() {
@@ -492,7 +580,7 @@
       // Controls initialize immediately — NOT gated on the game finishing
       // loading — so buttons are usable/visible even while Unity boots
       // (and even if the load promise never resolves).
-      var VERSION = 'v4';
+      var VERSION = 'v5';
       document.getElementById('ver').textContent = VERSION;
       initFullscreenButton();
       if (mobileMode) initTouchControls();
