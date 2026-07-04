@@ -81,6 +81,22 @@
         text-align: center;
         touch-action: none;
       }
+      #toast {
+        position: fixed;
+        left: 50%; bottom: 24px;
+        transform: translateX(-50%);
+        max-width: 82vw;
+        background: rgba(0,0,0,0.8);
+        color: #fff;
+        font-family: -apple-system, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+        padding: 10px 16px;
+        border-radius: 10px;
+        z-index: 90;
+        display: none;
+        text-align: center;
+        pointer-events: none;
+      }
       #rotate-overlay {
         position: fixed; inset: 0;
         background: rgba(20,18,18,0.92);
@@ -117,6 +133,7 @@
     <div id="joystick-base"><div id="joystick-knob"></div></div>
     <div id="joystick-hint" style="display:none">move</div>
     <div id="fs-button" style="display:none">&#x26F6;</div>
+    <div id="toast"></div>
     <div id="rotate-overlay"><div>&#x1F4F1;&#x21BB;<br><br>Please rotate your phone sideways (landscape) to play</div></div>
 
     <script>
@@ -184,12 +201,86 @@
           unityInstanceRef = unityInstance;
           loadingBar.style.display = "none";
           fullscreenButton.onclick = () => { unityInstance.SetFullscreen(1); };
+          initFullscreenButton();
           if (mobileMode) initTouchControls();
         }).catch((message) => {
           alert(message);
         });
       };
       document.body.appendChild(script);
+
+      /* ================= Fullscreen ================= */
+      // Rules learned the hard way:
+      // * Must be triggered from a user-activation event (touchend/click,
+      //   NOT touchstart).
+      // * Fullscreen the whole page, not the canvas, so overlays keep working.
+      // * Detect support by the METHOD existing on the element — do not trust
+      //   document.webkitFullscreenEnabled: iPhone WebKit reports true but
+      //   only <video> elements can actually fullscreen there.
+      // * iPhone (all browsers — they're all WebKit) can never element-
+      //   fullscreen, so show a home-screen tip instead of a dead button.
+
+      function showToast(html, ms) {
+        var t = document.getElementById('toast');
+        t.innerHTML = html;
+        t.style.display = 'block';
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(function() { t.style.display = 'none'; }, ms || 4000);
+      }
+
+      function initFullscreenButton() {
+        var fsBtn = document.getElementById('fs-button');
+        var el = document.documentElement;
+        var isIPhone = /iPhone|iPod/i.test(navigator.userAgent);
+        var isStandalone = (navigator.standalone === true) ||
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        var rfs = el.requestFullscreen || el.webkitRequestFullscreen ||
+                  el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+
+        if (!rfs || isIPhone || isStandalone) {
+          fsBtn.style.display = 'none';
+          if (isIPhone && !isStandalone) {
+            showToast('iPhone browsers can’t go fullscreen — for a fullscreen app, tap Share and “Add to Home Screen”', 7000);
+          }
+          return;
+        }
+
+        fsBtn.style.display = 'block';
+
+        function isFs() {
+          return !!(document.fullscreenElement || document.webkitFullscreenElement ||
+                    document.mozFullScreenElement || document.msFullscreenElement);
+        }
+        function toggle() {
+          if (isFs()) {
+            var exit = document.exitFullscreen || document.webkitExitFullscreen ||
+                       document.mozCancelFullScreen || document.msExitFullscreen;
+            if (exit) exit.call(document);
+            return;
+          }
+          var fail = function() { showToast('The browser blocked fullscreen', 4000); };
+          try {
+            var p = rfs.call(el, { navigationUI: 'hide' });
+            if (p && p.catch) p.catch(function() {
+              try {
+                var q = rfs.call(el);
+                if (q && q.catch) q.catch(fail);
+              } catch (e) { fail(); }
+            });
+          } catch (e) {
+            try { rfs.call(el); } catch (e2) { fail(); }
+          }
+        }
+        fsBtn.addEventListener('touchend', function(ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          toggle();
+        }, {passive: false});
+        fsBtn.addEventListener('click', function(ev) {
+          ev.preventDefault();
+          toggle();
+        });
+      }
 
       /* ================= Touch controls ================= */
 
@@ -198,10 +289,8 @@
         var base = document.getElementById('joystick-base');
         var knob = document.getElementById('joystick-knob');
         var hint = document.getElementById('joystick-hint');
-        var fsBtn = document.getElementById('fs-button');
         zone.style.display = 'block';
         hint.style.display = 'block';
-        fsBtn.style.display = 'block';
         document.getElementById('unity-footer').style.display = 'none';
 
         // --- synthetic keyboard events (WASD) ---
@@ -296,60 +385,6 @@
         document.addEventListener('visibilitychange', function() {
           if (document.hidden) releaseAll();
         });
-
-        // --- fullscreen button ---
-        // Notes:
-        // * Fullscreen must be requested from a user-activation event.
-        //   touchstart does NOT count as one — touchend/click do.
-        // * We fullscreen the whole page (documentElement), not the Unity
-        //   canvas, so the joystick overlay keeps working in fullscreen.
-        // * iPhone Safari has no Fullscreen API at all; the page already
-        //   fills the viewport there, so we hide the button instead.
-        function fullscreenAvailable() {
-          return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled ||
-                    document.mozFullScreenEnabled || document.msFullscreenEnabled);
-        }
-        function isFullscreen() {
-          return !!(document.fullscreenElement || document.webkitFullscreenElement ||
-                    document.mozFullScreenElement || document.msFullscreenElement);
-        }
-        function goFullscreen() {
-          if (isFullscreen()) {
-            var exit = document.exitFullscreen || document.webkitExitFullscreen ||
-                       document.mozCancelFullScreen || document.msExitFullscreen;
-            if (exit) exit.call(document);
-            return;
-          }
-          var el = document.documentElement;
-          var rfs = el.requestFullscreen || el.webkitRequestFullscreen ||
-                    el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-          if (rfs) {
-            try {
-              var p = rfs.call(el, { navigationUI: "hide" });
-              if (p && p.catch) p.catch(function() { try { rfs.call(el); } catch (e) {} });
-            } catch (e) {
-              try { rfs.call(el); } catch (e2) {}
-            }
-          } else if (unityInstanceRef) {
-            unityInstanceRef.SetFullscreen(1);
-          }
-        }
-        var isStandalone = (navigator.standalone === true) ||
-          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        if (!fullscreenAvailable() || isStandalone) {
-          // iPhone Safari (no API) or already installed to home screen
-          fsBtn.style.display = 'none';
-        } else {
-          fsBtn.addEventListener('touchend', function(ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            goFullscreen();
-          }, {passive: false});
-          fsBtn.addEventListener('click', function(ev) {
-            ev.preventDefault();
-            goFullscreen();
-          });
-        }
 
         // --- rotate-to-landscape hint ---
         var rotate = document.getElementById('rotate-overlay');
