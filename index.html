@@ -104,6 +104,21 @@
       #btn-interact  { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
       #btn-reload    { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
       #btn-inventory { bottom: calc(168px + env(safe-area-inset-bottom, 0px)); }
+      #btn-menu {
+        right: auto;
+        left: calc(14px + env(safe-area-inset-left, 0px));
+        top: calc(14px + env(safe-area-inset-top, 0px));
+        width: 48px; height: 48px;
+      }
+      #ver {
+        position: fixed;
+        left: 4px; bottom: 2px;
+        color: rgba(255,255,255,0.35);
+        font-family: monospace;
+        font-size: 10px;
+        z-index: 30;
+        pointer-events: none;
+      }
       #toast {
         position: fixed;
         left: 50%; bottom: 24px;
@@ -160,6 +175,8 @@
     <div class="action-btn" id="btn-interact"><span class="k">E</span><span class="l">use</span></div>
     <div class="action-btn" id="btn-reload"><span class="k">R</span><span class="l">reload</span></div>
     <div class="action-btn" id="btn-inventory"><span class="k">&#x25A4;</span><span class="l">items</span></div>
+    <div class="action-btn" id="btn-menu"><span class="k">P</span><span class="l">menu</span></div>
+    <div id="ver"></div>
     <div id="rotate-overlay"><div>&#x1F4F1;&#x21BB;<br><br>Please rotate your phone sideways (landscape) to play</div></div>
 
     <script>
@@ -208,6 +225,9 @@
       if (mobileMode) {
         container.className = "mobile-fill";
         canvas.className = "";
+        // our mobile-fill class bypasses the template's .unity-mobile CSS,
+        // so hide the desktop footer explicitly
+        document.getElementById("unity-footer").style.display = "none";
         // Cap resolution for phone performance
         config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2);
       } else {
@@ -227,8 +247,6 @@
           unityInstanceRef = unityInstance;
           loadingBar.style.display = "none";
           fullscreenButton.onclick = () => { unityInstance.SetFullscreen(1); };
-          initFullscreenButton();
-          if (mobileMode) initTouchControls();
         }).catch((message) => {
           alert(message);
         });
@@ -327,6 +345,7 @@
           D: {code:'KeyD', key:'d', keyCode:68},
           E: {code:'KeyE', key:'e', keyCode:69},
           R: {code:'KeyR', key:'r', keyCode:82},
+          P: {code:'KeyP', key:'p', keyCode:80},
           TAB: {code:'Tab', key:'Tab', keyCode:9}
         };
         var pressed = {W:false, A:false, S:false, D:false};
@@ -435,6 +454,7 @@
         bindActionButton('btn-interact', 'E');
         bindActionButton('btn-reload', 'R');
         bindActionButton('btn-inventory', 'TAB');
+        bindActionButton('btn-menu', 'P');
 
         // One-time hint: firing is built into aiming
         setTimeout(function() {
@@ -467,6 +487,29 @@
           lastTap = now;
         }, {passive: false, capture: false});
       }
+
+      /* ================= Startup ================= */
+      // Controls initialize immediately — NOT gated on the game finishing
+      // loading — so buttons are usable/visible even while Unity boots
+      // (and even if the load promise never resolves).
+      var VERSION = 'v4';
+      document.getElementById('ver').textContent = VERSION;
+      initFullscreenButton();
+      if (mobileMode) initTouchControls();
+
+      // Home-screen (standalone) apps cache hard; check for a newer
+      // deployed version and tell the player how to get it.
+      setTimeout(function() {
+        fetch(window.location.pathname + '?verchk=' + Date.now(), {cache: 'no-store'})
+          .then(function(r) { return r.text(); })
+          .then(function(t) {
+            var m = t.match(/var VERSION = '(v\d+)'/);
+            if (m && m[1] !== VERSION) {
+              showToast('Game update available — fully close this app (swipe it away) and reopen it', 8000);
+            }
+          })
+          .catch(function() {});
+      }, 5000);
     </script>
   </body>
 </html>
