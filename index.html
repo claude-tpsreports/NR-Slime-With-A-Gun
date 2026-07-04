@@ -522,6 +522,34 @@
         var invBtn = document.getElementById('btn-inventory');
         invBtn.style.display = 'flex';
 
+        // Phone screens are much wider (≈2.2:1) than the 1366x768 (16:9)
+        // layout the game was designed for, and the game's inventory panel
+        // lays out taller than the phone screen — the hotbar drop target
+        // ends up below the bottom edge. While inventory mode is on, we
+        // letterbox the canvas to 16:9 so Unity reflows the UI exactly as
+        // on a desktop monitor; on exit we restore full screen.
+        function fitCanvasAspect(on) {
+          if (on) {
+            var W = window.innerWidth, H = window.innerHeight;
+            var w = Math.min(W, H * 1366 / 768);
+            var h = Math.min(H, W * 768 / 1366);
+            canvas.style.position = 'fixed';
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            canvas.style.left = ((W - w) / 2) + 'px';
+            canvas.style.top = ((H - h) / 2) + 'px';
+          } else {
+            canvas.style.position = '';
+            canvas.style.width = '';
+            canvas.style.height = '';
+            canvas.style.left = '';
+            canvas.style.top = '';
+          }
+        }
+        window.addEventListener('resize', function() {
+          if (uiMode) fitCanvasAspect(true);
+        });
+
         // Everything except the items (exit) button must get out of the way
         // in inventory mode — any control floating above the capture layer
         // steals touches from the game's UI underneath it.
@@ -531,6 +559,7 @@
           uiOverlay.style.display = on ? 'block' : 'none';
           zone.style.display = on ? 'none' : 'block';
           invBtn.classList.toggle('latched', on);
+          fitCanvasAspect(on);
           hideWhileUi.forEach(function(id) {
             var el = document.getElementById(id);
             if (!el) return;
@@ -636,7 +665,7 @@
       // Controls initialize immediately — NOT gated on the game finishing
       // loading — so buttons are usable/visible even while Unity boots
       // (and even if the load promise never resolves).
-      var VERSION = 'v7';
+      var VERSION = 'v8';
       document.getElementById('ver').textContent = VERSION;
       initFullscreenButton();
       if (mobileMode) initTouchControls();
