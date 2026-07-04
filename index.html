@@ -70,7 +70,8 @@
       }
       #fs-button {
         position: fixed;
-        top: 10px; right: 10px;
+        top: calc(10px + env(safe-area-inset-top, 0px));
+        right: calc(10px + env(safe-area-inset-right, 0px));
         z-index: 25;
         width: 42px; height: 42px;
         border-radius: 10px;
@@ -297,10 +298,58 @@
         });
 
         // --- fullscreen button ---
-        fsBtn.addEventListener('touchstart', function(ev) {
-          ev.preventDefault();
-          if (unityInstanceRef) unityInstanceRef.SetFullscreen(1);
-        }, {passive: false});
+        // Notes:
+        // * Fullscreen must be requested from a user-activation event.
+        //   touchstart does NOT count as one — touchend/click do.
+        // * We fullscreen the whole page (documentElement), not the Unity
+        //   canvas, so the joystick overlay keeps working in fullscreen.
+        // * iPhone Safari has no Fullscreen API at all; the page already
+        //   fills the viewport there, so we hide the button instead.
+        function fullscreenAvailable() {
+          return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled ||
+                    document.mozFullScreenEnabled || document.msFullscreenEnabled);
+        }
+        function isFullscreen() {
+          return !!(document.fullscreenElement || document.webkitFullscreenElement ||
+                    document.mozFullScreenElement || document.msFullscreenElement);
+        }
+        function goFullscreen() {
+          if (isFullscreen()) {
+            var exit = document.exitFullscreen || document.webkitExitFullscreen ||
+                       document.mozCancelFullScreen || document.msExitFullscreen;
+            if (exit) exit.call(document);
+            return;
+          }
+          var el = document.documentElement;
+          var rfs = el.requestFullscreen || el.webkitRequestFullscreen ||
+                    el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+          if (rfs) {
+            try {
+              var p = rfs.call(el, { navigationUI: "hide" });
+              if (p && p.catch) p.catch(function() { try { rfs.call(el); } catch (e) {} });
+            } catch (e) {
+              try { rfs.call(el); } catch (e2) {}
+            }
+          } else if (unityInstanceRef) {
+            unityInstanceRef.SetFullscreen(1);
+          }
+        }
+        var isStandalone = (navigator.standalone === true) ||
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        if (!fullscreenAvailable() || isStandalone) {
+          // iPhone Safari (no API) or already installed to home screen
+          fsBtn.style.display = 'none';
+        } else {
+          fsBtn.addEventListener('touchend', function(ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            goFullscreen();
+          }, {passive: false});
+          fsBtn.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            goFullscreen();
+          });
+        }
 
         // --- rotate-to-landscape hint ---
         var rotate = document.getElementById('rotate-overlay');
